@@ -7,6 +7,7 @@ Materials for the Statistics in Sports class for first-year undergrads at Oxford
 * Basketball analytics
 * Football analytics
 * Soccer analytics
+* Sports business analytics
 * Some other random sessions as part of Oxford's first-year experience (ignore these)
 
 Materials include:
