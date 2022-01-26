@@ -17,3 +17,5 @@ Materials include:
 * Homeworks
 
 The course also includes a group final project working with real-world sports data. The projects for this semester were analyses of Emory's MBB and WBB practice data, creating a recruitment map for Emory Athletics, and analyzing nflfastR data. A more detailed final project description and rubric is available upon request.
+
+Feel free to use any of these materials with attribution to Zachary Binney, Oxford College of Emory University and this Github link.
