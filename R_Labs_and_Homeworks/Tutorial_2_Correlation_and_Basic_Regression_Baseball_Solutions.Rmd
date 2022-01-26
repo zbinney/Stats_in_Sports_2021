@@ -1,0 +1,476 @@
+---
+title: "Tutorial 2 - Correlation and Basic Regression with Baseball in R"
+
+author: "Zachary Binney, PhD"
+date: "August 2021"
+
+output: html_document
+description: "Correlation and Basic Regression - Baseball"
+---
+
+```{r setup}
+pacman::p_load(tidyverse, Lahman, psych)
+
+```
+
+# Relationships Between Two Variables
+
+## Motivation
+
+We outlined 4 broad characteristics that describe good sports statistics:
+
+1. Is the stat important for success in the sport?
+
+2. For player valuation: Does the stat capture/isolate an individual player’s contribution?
+
+3. Is there a better alternative to measure what you’re trying to measure?
+
+4. Is the stat repeatable/stable? That is, is it measuring signal or noise? “True talent” or luck?
+
+Characteristics 1 and 4 can be assessed quantitatively, and we'll do so in today's lab. (Characteristics 2 and 3 have a quantitative assessment component but also rely more on critical thinking and subject matter expertise, so we're skipping them for today.)
+
+## Relationships Between Two Continuous Variables
+
+We know that who wins a baseball game is determined by who scores more runs. So it stands to reason a team's wins in a season would be determined by the number of runs they score.
+
+Wait, actually, do we know that? Why don't we check.
+
+### Scatterplot
+
+A simple way you should always, always, *always*, ALWAYS examine the relationship between two continuous variables like runs and wins is a scatterplot (or some other plot of your data):
+
+```{r scatter, eval = FALSE}
+# Create a new data frame of teams data for 2001-19 (that is, the 20th century)
+teams_21c <- Teams %>% 
+  filter(yearID >= 2001, yearID <= 2019)
+
+# Create a scatterplot  
+teams_21c %>% 
+  ggplot(aes(x = R, y = W)) +
+  geom_point() + 
+  labs(title = "Runs vs. Wins in MLB, 2001-19", 
+       x = "Runs Scored", y = "Wins")
+
+```
+<mark>**Lab Activity 1**</mark>: Just looking at this visually, how would you describe the relationship between runs scored and wins?
+
+Great. But how can we assess this more formally?
+
+### Correlation Coefficients
+
+One way is with **correlation coefficients**, often denoted "**r**". This is a number from -1 to +1 that summarizes the *linear* association between two variables (CAUTION: it does not capture other kinds of relationships!). 
+
+* -1 represents a perfect negative linear relationship (as `x` rises, `y` falls a perfectly predictable amount)
+
+* 0 represents *no* linear relationship between x and y (as `x` rises, `y` moves unpredictably)
+
+* +1 represents a perfect positive linear relationship (as `x` rises, `y` rises a perfectly predictable amount) 
+
+<mark>**Lab Activity 2**</mark>: Without checking, what do you think the correlation coefficient between runs scored and wins is?
+
+Now let's check.
+
+```{r cor_basic, eval = FALSE}
+
+cor(teams_21c$R, teams_21c$W) # The syntax {DATA_FRAME}${VAR_NAME} references the indicated variable in the indicated data frame
+```
+The correlation coefficient is often reported as the square of its value, called...well, "**r-squared**". This is because r-squared as a nice interpretation: it is the percent of the variation in y explained by x.
+
+```{r cor_r2, eval = FALSE}
+
+cor(teams_21c$R, teams_21c$W)^2
+```
+This suggests that about 32.6% of the variation in a team's win totals is explained by how many runs it scores.
+
+<mark>**Lab Activity 3**</mark>:
+
+1. Let's re-do the above analyses for runs against (`RA`) rather than runs scored (`R`).
+
+2. Which appears to be "more important" (that is, explains more about) a team's win total?
+
+3. If you ran a baseball team, does this suggest you should invest more in offense or defense (from 2001-19)?
+
+4. You have $10 million to spend on either a quality position player or pitcher. Based on just this data, who should you spend it on?
+
+
+
+### Simple Linear Regression
+
+It's a bad idea to rest any conclusions *purely* on correlation coefficients, though, as they're [very limited in what they can tell you and can hide a lot of information](https://blog.revolutionanalytics.com/downloads/DataSaurus%20Dozen.gif). 
+
+A more complete approach includes plotting your raw data and visualizing their relationship with a **best-fit line** through your data. There are many ways to do this, but we'll focus on one: **simple linear regression**. This is limited because it only fits a straight line, so it won't work for non-linear relationships. But it's a good introduction to the basic idea of quantifying relationships between variables with regression.
+
+```{r slr, eval = FALSE}
+# Plot a line of best fit through the data
+teams_21c %>% 
+  ggplot(aes(x = R, y = W)) +
+  geom_point() +
+  geom_smooth(method = "lm") + # Fits a simple linear regression model instead of a LOESS smoothing line
+  labs(title = "Runs vs. Wins in MLB, 2001-19", 
+       x = "Runs Scored", y = "Wins")
+
+# Fit a simple linear regression model to get the line's equation
+m1 <- lm(data = teams_21c, formula = W ~ R)
+summary(m1)
+```
+
+<mark>**Lab Activity 4**</mark>: Let's walk through the key parts of this output together.
+
+
+### Comparing Correlations Among 3+ Variables
+
+<mark>**Lab Activity 5**</mark>: By only looking at runs scored (R) vs. wins above, we left out a whole critical part of the game. How could we incorporate it? DON'T LOOK BELOW!
+
+```{r rundiff, include = FALSE}
+# Create a new data frame of teams data for 2001-19 (that is, the 20th century)
+teams_21c <- Teams %>% 
+  filter(yearID >= 2001, yearID <= 2019) %>% 
+  mutate(rundiff = R - RA)
+```
+
+```{r rundiff2, include = FALSE, eval = FALSE}
+teams_21c %>% 
+  ggplot(aes(x = rundiff, y = W)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  labs(title = "Run Differential vs. Wins in MLB, 2001-19", 
+       x = "Run Differential", y = "Wins") +
+  theme(plot.title = element_text(size = 20), axis.title = element_text(size = 16))
+
+m2 <- lm(data = teams_21c, formula = W ~ rundiff)
+summary(m2)
+
+```
+
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+
+#### Correlation Matrixes
+
+For initially *exploring* how variables are related - but not for drawing final conclusions, which should always involve plotting data and likely regression models! - a quick first way is a **correlation matrix**. Let's do this for runs (`R`), run differential (`rundiff`), and...what the hell, attendance vs. wins (`W`).
+
+Here's one way to construct one I *don't* recommend in most cases:
+
+```{r cormat, eval = FALSE}
+
+teams_21c %>% 
+  select(R, rundiff, W, attendance) %>% 
+  cor() # Unformatted and minimally-informative correlation matrix
+
+```
+
+Want to level up your correlation matrixes? May I introduce you to `psych::pairs.panels()`?
+
+```{r cormat_w_scatter, eval = FALSE}
+
+teams_21c %>% 
+  select(W, R, rundiff, attendance) %>% 
+  pairs.panels() # Method from the psych package that includes r AND scatterplots - yeah, baby, yeah
+
+```
+
+Now that's boss-level correlation matrix shit. Let's go!!
+
+<mark>**Lab Activity 6**</mark>:
+
+1. Which variables are most and least strongly associated with wins?
+
+2. Why is attendance positively correlated with wins? Does greater attendance *cause* more wins?
+
+    That's always a good general lesson to remember: **CORRELATION DOES NOT EQUAL CAUSATION!!!**
+
+### Non-Linear Relationships
+
+What about non-linear relationships? This is a completely contrived example, but say we want to look at the association between run differential *squared* and wins.
+
+```{r nonlinear, eval = FALSE}
+# Plot a line of best fit through the data
+teams_21c %>% 
+  mutate(rundiff2 = (R - RA)^2) %>% 
+  ggplot(aes(x = W, y = rundiff2)) +
+  geom_point() +
+  geom_smooth(method = "lm", color = "blue") + # Fits a simple linear regression model instead of a LOESS smoothing line
+  geom_smooth(color = "red") + # Fits a more flexible LOESS model
+  labs(title = "Run Differential Squared vs. Wins in MLB, 2001-19", 
+       x = "Wins", y = "Run Differential Squared")
+
+```
+
+The only negative is if we were to look at the coefficients for the line of best fit it would be more complicated - which is why we aren't doing that today. It's outside the scope of this course. But... 
+
+<mark>**Lab Activity 7**</mark>: 
+
+1. Which of the lines better fits the data? If you were a sabermetrician, which would you rather use to try to "predict" wins from the square of run differential?
+
+2. What would a correlation coefficient show about the relationship between these two variables? Let's calculate one to find out.
+
+3. Would your conclusions about whether and how these variables are related change if you only looked at the correlation coefficient or also plotted your data? 
+
+## Statisitic Repeatability
+
+Another concept we discussed was how repeatable various statistics are. 
+
+More repeatable statistics are more likely to represent a player or team's **true talent** level, rather than luck/randomness/noise.
+
+Furthermore, If a *player* stat is stable over time (for example from season to season), it's more likely it reflects something about *that player's* true talent, because that will be a fairly consistent "signal" throughout their career. It's less likely to reflect either luck OR something else outside their control - like the skill of the fielders behind a pitcher.
+
+### Assessing Repeatability of Pitching Statistics
+
+Consider a few pitcher statistics: ERA, BABIP, and FIP. Don't worry too much about the code below - it's complicated. Getting the data into the format we need for this actually requires some fairly careful and advanced work.
+
+```{r fip_c}
+# Create a data frame of FIP constants from Fangraphs
+fipc <- data.frame(year = c(2019:2001),
+                   fipc = c(3.214, 	3.161, 	3.158, 	3.147, 	3.134, 	3.132, 	3.048, 	3.095, 	3.025, 	3.079, 	3.097, 	3.132, 	3.24, 	3.147, 	3.02, 	3.049, 	3.031, 	2.962, 	3.049))
+
+```
+
+```{r stability_data}
+
+# Calculate FIP
+pitchers_rep <- Pitching %>%
+  filter(yearID >= 2001, yearID <= 2019) %>%
+  
+  # "Join" in data on FIP constants from above so we can use it below
+  left_join(fipc, by = c("yearID" = "year")) %>% 
+  
+  # Create FIP and BABIP. ERA already exists 
+  mutate(FIP = (13*HR + 3*(BB-IBB+HBP) - 2*SO)/(IPouts) + fipc, # FIP formula from Fangraphs
+         BABIP = (H - HR)/(BFP - SO - BB - HR)) %>%  # Modified version of BABIP based on stats easily available in Lahman
+
+  # Finally we need to create new columns for each stat for the subsequent season
+  arrange(playerID, yearID) %>% 
+  group_by(playerID) %>% 
+  mutate(ERA_next = lead(ERA),
+         BABIP_next = lead(BABIP),
+         FIP_next = lead(FIP),
+         IPouts_next = lead(IPouts)) %>% 
+  ungroup() %>% 
+  
+  filter(!is.na(ERA_next), # Drop all seasons without next ERA (that is, each player's last season)
+         !is.na(ERA),
+         !is.infinite(BABIP),
+         !is.nan(BABIP),
+         !is.infinite(FIP),
+         !is.nan(FIP)) 
+
+# Note this isn't perfect because some players skip seasons entirely, so the "next" variables are actually the next season
+# they play, not necessarily the subsequent season.
+
+# Quality check: print the last 20 observations of some variables to verify we got what we expected
+pitchers_rep %>% 
+  select(playerID, yearID, ERA, ERA_next, FIP, FIP_next) %>% 
+  tail(20)
+
+```
+
+OK, we've got what we need. 
+
+<mark>**Lab Activity 8**</mark>: 
+
+1. What do you expect to see about the correlations of ERA, BABIP, and FIP for pitchers based on our lecture?
+
+2. Try writing some code to compare the year-to-year stability (i.e. correlation) of ERA, BABIP, and FIP.
+
+3. Did you see what you expected?
+
+```{r stability_ytoy, include = FALSE}
+
+pitchers_rep %>%
+  filter(IPouts >= 420, # Heh heh
+         IPouts_next >= 420) %>% 
+  select(BABIP, BABIP_next, ERA, ERA_next, FIP, FIP_next) %>% 
+  pairs.panels()
+
+```
+
+Year-to-year repeatability isn't the only time period you can look at. Sometimes you might want to look at "splits" within a year, such as first-half vs. second-half performance.  Which time period makes sense depends entirely on your **QUESTION**. 
+
+### Repeatability vs. Stability
+
+There's a related concept in sabermetrics I'll call stability. If you're evaluating players you may want to know how quickly a statistic describing their performance "stabilizes" - that is, how much data should you have before being confident about their true talent? For example, [how many plate appearances does it take before we get a *reliable* measurement of a pitcher's strikeout or home run rates](https://www.baseballprospectus.com/fantasy/article/14293/resident-fantasy-genius-when-pitchers-stats-stabilize/)?
+
+We're not investigating that today, I just wanted to mention it briefly because people (me) can confuse these topics.
+
+
+
+
+## Predictive vs. Descriptive Relationships
+
+When we compared multiple different variables above we were using them what I would call *descriptively*. For example, can we use runs scored to **describe** wins scored in the same year?
+
+But we can also look at the relationships between statistics and future, unknown values that we want to **predict**. 
+
+For example, let's consider a simple measure of the number of runs a team would have been expected to score in a year called **runs created** (RC, invented by Bill James in the 1970s):
+
+```{r predict}
+
+# Create RC and next-year runs variables
+teams_21c <- teams_21c %>% 
+  
+  mutate(Singles = H - HR - X2B - X3B, # Create variable for number of singles
+         TB = Singles + 2*X2B + 3*X3B + 4*HR, # Create variable for total bases
+         RC = (H+BB)*TB/(AB+BB)) %>%  # Formula for runs created
+  
+  # Create variable for runs next year
+  arrange(franchID, yearID) %>% 
+  group_by(franchID) %>% 
+  mutate(R_next = lead(R)) %>% 
+  ungroup()
+
+```
+
+<mark>**Lab Activity 9**</mark>: Does runs (R), runs created (RC), total bases (TB), triples (X3B), or attendance best predict the runs scored by a team in the subsequent year? 
+
+```{r predict2, include = FALSE}
+
+teams_21c %>%
+  select(R_next, R, RC, TB, X3B, attendance) %>% 
+  pairs.panels() 
+
+```
+
+
+## Relationships Between Continuous and Categorical Variables
+
+We've already seen a way to investigate the relationship between a categorical and continuous variable. Let's look at the association between run differential and whether a team won its division that year (`DivWin`).
+
+<mark>**Lab Activity 10**</mark>: 
+
+1. What do you expect the relationship to be between these two variables?
+
+2. Create a visualization to investigation the relationship between these two variables. HINT: Copy some code from Tutorial 1 :)
+
+```{r box_and_jitter, include = FALSE}
+
+teams_21c %>% 
+  ggplot(aes(x = DivWin, y = rundiff)) +
+  geom_boxplot() + 
+  geom_jitter(height = 0) + 
+  labs(title = "Run Differential by Division Winner, MLB 2001-19", 
+       x = "Won Division?", y = "Run Differential") 
+
+```
+
+It turns out we can also run a simple linear regression model for one continuous and one categorical variable:
+
+```{r slr_cat, eval = FALSE}
+
+m3 <- lm(data = teams_21c, formula = rundiff ~ DivWin)
+summary(m3)
+
+```
+
+<mark>**Lab Activity 11**</mark>: Let's discuss how to interpret the basics of this output together.
+
+
+# Conclusion and Credit
+
+Now you're well equipped to conduct basic investigations of (primarily linear) associations between pairs of variables in R. Great job!
+
+Parts of this lab and HW were adapted from Mike Lopez's Statistics in Sports course [here](https://github.com/statsbylopez/StatsSports20).
+
+
+
+# Lab HW 2
+
+Here are the questions for your first HW. You should answer these in an RMarkdown document, knit to **PDF** and submit on Canvas.
+
+Imagine you're the general manager (GM) of a baseball team - say, Billy Beane in Oakland in the early 2000s - heading into free agency. You have a set amount of money you can spend on hitters, so you need to figure out what hitting metrics you should prioritize assessing players to get the most bang for your buck.
+
+This HW is worth 10 points total.
+
+<mark>**HW Q1**</mark>: Should you rank hitters using batting average (BA), on-base percentage (OBP), slugging percentage (SLG), or weighted on-base average (wOBA)? Using data from 1982-2002, inclusive, EXCEPT for the 1994 strike season (you can remove this with code like `yearID != 1994`:
+
+* Create a new variable for each statistic from the `Teams` data in `Lahman`. Note for SLG I've given you code to calculate TB (and, as a prerequisite, the number of singles) above. For wOBA, for simplicity you may use the weights given in the lecture (even though technically these should vary somewhat every year). Also for wOBA, you may assume uBB and (BB-iBB) = BB. (1 pt)
+
+* Use **visual evidence** and **correlation coefficients** to figure out which is most strongly (linearly) associated with runs scored at the team level (2 pts)
+
+* Write 1-2 sentences explaining which statistic you would use to prioritize hitters and why based on the results above (1 pt)
+
+```{r solution_q1}
+
+teams_q1 <- Teams %>% 
+  filter(yearID %in% c(1982:2002), yearID != 1994) %>% 
+  mutate(Singles = H - HR - X2B - X3B,
+         BA = H/AB,
+         OBP = (H + BB + HBP)/(AB + BB + HBP + SF),
+         SLG = (Singles + 2*X2B + 3*X3B + 4*HR)/AB,
+         OPS = OBP + SLG,
+         wOBA = (0.69*BB + 0.72*HBP + 0.89*Singles + 1.28*X2B + 1.64*X3B + 2.14*HR)/(AB + BB + SF + HBP)) %>% 
+  select(R, BA, OBP, SLG, wOBA)
+
+teams_q1 %>% 
+  pairs.panels()
+
+```
+
+<mark>**HW Q2**</mark>: For the *one* statistic you chose above, run a simple linear regression model and numerically interpret the association between that statistic and runs scored in about 1 sentence. I recommend interpreting the relationship per 0.010-unit (what you might hear someone call a "10-point") increase in this statistic. So for example (if you're using batting average), what does the model say happens on average when someone raises their batting average from 0.280 to 0.290? (2 pts)
+
+Note normally I'd suggest running a model for all these stats as part of your exploratory work, but I'm only asking you to run one here to limit the amount of work.
+
+```{r solution_q2}
+
+mq2 <- lm(data = teams_q1, formula = R ~ wOBA)
+summary(mq2)
+
+```
+
+<mark>**HW Q3**</mark>: We now know this statistic correlates with runs at the *team* level. But does it measure a player's *individual contribution* to the game? 
+
+* To get at that calculate the year-over-year repeatability of both your statistic *and BA* within the same player using the `Batting` data frame in Lahman. Consider only batting seasons with >50 ABs and use the same time period as above. (2 pts)
+
+```{r hwq3_dataprep}
+
+# Calculate FIP
+batting_ytoy <- Batting %>% 
+  
+  # Code for filtering data frame by time and ABs, and creating new variables goes here
+  filter(yearID %in% c(1982:2002), yearID != 1994, AB > 50) %>% 
+  mutate(Singles = H - HR - X2B - X3B,
+         BA = H/AB,
+         OBP = (H + BB + HBP)/(AB + BB + HBP + SF),
+         SLG = (Singles + 2*X2B + 3*X3B + 4*HR)/AB,
+         OPS = OBP + SLG,
+         wOBA = (0.69*BB + 0.72*HBP + 0.89*Singles + 1.28*X2B + 1.64*X3B + 2.14*HR)/(AB + BB + SF + HBP)) %>% 
+
+  # Finally we need to create new columns for each stat for the subsequent season
+  arrange(playerID, yearID) %>% 
+  group_by(playerID) %>% 
+  
+  # Choose only the lines of code that calculates your chosen statistic AND BA for the next year
+  mutate(BA_next = lead(BA),
+         OBP_next = lead(OBP),
+         SLG_next = lead(SLG),
+         wOBA_next = lead(wOBA)) %>% 
+  ungroup() %>% 
+  
+  filter(!is.na(BA_next)) # Drop all seasons without next BA (that is, each player's last season)
+
+```
+
+
+```{r solution_q3, include = FALSE}
+
+batting_ytoy %>%
+  select(BA, BA_next, wOBA, wOBA_next) %>% 
+  pairs.panels()
+
+```
+
+*Which statistic (BA or your choice) has greater repeatability?
+
+* Does "higher" or "lower" year-over-year repeatability suggest a statistic is a better reflection of individual contributions, and why? Explain in about 2 sentences. (1 pt)
+
+    (This is completely optional, but if you're interested in learning more about hitting metric repeatability here's a great [Fangraphs article](https://blogs.fangraphs.com/basic-hitting-metric-correlation-1955-2012-2002-2012/). And here is [a corresponding one for pitchers](https://blogs.fangraphs.com/basic-pitching-metric-correlation-1955-2012-2002-2012/).)
+
+General organization and clarity of the report you turn in is worth 1 pt.

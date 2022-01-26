@@ -1,0 +1,463 @@
+---
+title: "Tutorial 5 - Soccer"
+
+author: "Zachary Binney, PhD"
+date: "November 2021"
+
+output: html_document
+description: "Soccer Analytics"
+---
+
+```{r setup}
+pacman::p_load(tidyverse)
+
+```
+
+# Introduction to `StatsBombR`
+
+The bulk of this tutorial lab will be focused on learning to use the `StatsBombR` package, which offers free but rich events data on a selection of soccer matches from the company StatsBomb, including data from Messi's entire career as well the National Women's Soccer League and the FA Women's Super League. 
+
+It's far from the only source of soccer data out there, but it's the one with perhaps the most well-developed interface for using it in R.
+
+We'll be working from a few different resources on `StatsBombR`, but the main one is StatsBomb's own ["Accessing and Working With StatsBomb Data in R"](https://statsbomb.com/wp-content/uploads/2021/11/Working-with-R.pdf), which we'll refer to as the the "StatsBomb Guide" below.
+
+## Installing `StatsBombR` and Exploring the Data
+
+Let's go to page 8 of the StatsBomb Guide to learn how to install the package. It's a bit complicated. We'll also install a couple helper packages, `soccermatics` and `SBpitch`, that have some built-in functions to more easily analyze StatsBomb data in R.
+
+```{r install_sb}
+
+# pacman::p_load(devtools, remotes)
+# 
+# remotes::install_version("SDMTools", "1.1-221")
+# 
+# devtools::install_github("statsbomb/StatsBombR")
+# 
+# devtools::install_github("jogall/soccermatics")
+# 
+# devtools::install_github("FCrSTATS/SBpitch")
+
+
+pacman::p_load(StatsBombR, soccermatics, SBpitch, ggrepel, ggtext, glue, knitr)
+
+```
+
+Now let's start exploring the data, starting on page 11 of the StatsBomb Guide.
+
+Let's start by getting a list of the "competitions" the package offers for free:
+
+```{r comps}
+
+# Pull and print list of competitions available
+comps <- FreeCompetitions()
+
+kable(head(as.tibble(comps)))
+
+
+```
+
+<mark>**Lab Activity 1**</mark>: Take a look at the data and see if you can puzzle out what it might show. Use this [link](https://statsbomb.com/2021/11/statsbomb-release-free-2020-21-fa-womens-super-league-data-updated-r-guide/) to cross-reference what you see in the data with what this post says should be there.
+
+Now let's dive into the data available for one of the competitions - the NWSL's 2018-19 season. Let's pull the list of available matches:
+
+```{r matches}
+
+# Pull match data for one competition
+matches <- comps %>% 
+  filter(competition_name == "NWSL") %>% 
+  FreeMatches()
+
+# Print
+matches
+
+```
+
+<mark>**Lab Activity 2**</mark>: 
+
+1. How many matches were there from that season?
+
+2. What does each row of the data frame contain?
+
+3. What are some of the main data points contained in each row? Explore the data using some of the techniques you've learned in the course so far.
+
+Finally let's dive down one more level and look at the data for a single match.
+
+```{r events}
+
+
+# Pull events data for one match - specifically, the April 15th match
+events <- StatsBombFreeEvents(MatchesDF = matches %>% filter(match_date == "2018-04-15")) %>% 
+  # Automatically do some data cleaning for better use in R
+  allclean()
+
+# Print
+events
+
+
+```
+
+<mark>**Lab Activity 3**</mark>: 
+
+1. How many events were logged in this match?
+
+2. What teams were playing?
+
+3. What are the 3 most common types of events?
+
+4. What are some of the main data points contained in each row? Explore the data using some of the techniques you've learned in the course so far.
+
+For much more information on the data contained at each of these levels, see page 14 of the StatsBomb Guide.
+
+## Data Use Cases
+
+Now let's get into just a few fun things we can do with the data.
+
+### xG Plots
+
+Let's start with some xG plots. Specifically, let's start by mapping the xG of the shots from the game above.
+
+#### xG Map
+
+This xG plot code is part of the [`soccermetrics` package from Joe Gallagher](https://github.com/JoGall/soccermatics). Be aware this package is under active development and may change with little notice. Indeed, some of the code offered at that link doesn't appear to match up to what the package is actually capable of. I'm still including it because of its relative simplicity for performing certain tasks.
+
+Here, for example, is code to produce a shot map for the North Carolina Courage
+
+```{r xg_maps}
+
+events %>%
+  filter(team.name == "North Carolina Courage") %>%
+  soccerShotmap(theme = "grass", 
+                
+                # Fix default pitch size (in meters) to work with StatsBomb coded data
+                lengthPitch = 120, widthPitch = 80) 
+
+```
+
+<mark>**Lab Activity 4**</mark>: 
+
+1. What information appears to be contained in the above plot?
+
+2. What other information would you like the plot to contain to help you interpret the plot?
+
+3. Can you figure out how to adjust the above code to give you the Washington Spirit's goals instead?
+
+Note supposedly this function is able to depict goals from both teams at once (simply comment out the `filter()` line to do so), but it does not appear to plot one team's goals correctly when I do that. I assume this function requires some debugging to work properly for that purpose, so we're just doing one team at a time.
+
+#### xG Accumulation Plot
+
+Let's now move on to a more complicated task - an xG accumulation plot for a single match. Note this code was modified from [Ryo Nakagarawa's tutorial here](https://ryo-n7.github.io/2019-08-21-visualize-soccer-statsbomb-part-1/).
+
+```{r xG_accum}
+
+# Create a simple data frame with each team's total xG
+events_xg <- events %>%
+  
+  # Replace "NA" values with 0 for non-shot events so everything can sum easily
+  mutate(shot.statsbomb_xg = replace_na(shot.statsbomb_xg, 0)) %>% 
+  
+  # For each team, calculate their total xG and round to 2 significant digits
+  group_by(team.name) %>% 
+  summarize(tot_xg = sum(shot.statsbomb_xg) %>% signif(digits = 2)) %>% 
+  
+  # Create a new column that is just the team name, a colon, the team's total xG, and the characters "xG"
+  mutate(team_label = glue("{team.name}: {tot_xg} xG"))
+
+
+
+# Create 2 new columns with the team's total xG and team_label in each row
+# Note this is clumsy and inefficient, but it's necessary for our plot below
+events <- events %>% 
+  left_join(events_xg, by = "team.name") %>% 
+  
+  # Create new variable picking just the player's last name as the final "word" in their name column
+  mutate(last.name = word(player.name, -1),
+         
+         # Create new character string variable for each shot with xG information
+         player_label = case_when(shot.outcome.name == "Goal" ~ glue("{last.name}: {shot.statsbomb_xg %>% signif(digits = 2)} xG"),
+                                  TRUE ~ ""))
+
+
+
+# Create cumulative sum of xG events, if any, organized by each minute for each team
+events_rollsum <- events %>% 
+  
+  # Replace "NA" values with 0 for non-shot events so everything can sum easily
+  mutate(shot.statsbomb_xg = replace_na(shot.statsbomb_xg, 0),
+         
+         # Mark 1st period extra time as minute 45 to avoid overlap
+         minute = case_when(minute >= 45 & period == 1 ~ as.integer(45),
+                            TRUE ~ minute)) %>%
+  
+  # For each minute, period, and team, total xG from all events (non-shots = 0.0 xG)
+  group_by(minute, team.name, period) %>% 
+  summarize(sumxg = sum(shot.statsbomb_xg)) %>% 
+  ungroup() %>% 
+  
+  # For each team, create a new column that is the sum of all previous xG values (i.e. all shots up to that point)
+  group_by(team.name) %>% 
+  mutate(rollsum = lag(cumsum(sumxg)),
+         
+         # Replace NAs in first minute with 0
+         rollsum = case_when(is.na(rollsum) ~ 0, 
+                             TRUE ~ rollsum)) %>%
+  
+  select(team.name, minute, rollsum, sumxg) %>%
+  
+  # Special line to deal with shots in final minute
+  mutate(rollsum = case_when(
+    row_number() == n() & sumxg != 0 ~ rollsum + sumxg,
+    TRUE ~ rollsum
+  ))
+
+
+
+# Add data on goals to cumulative xG dataset for plot labeling purposes
+events_rollsum <- events_rollsum %>% 
+  
+  # Add data on goal shooter
+  left_join(events %>% filter(shot.outcome.name == "Goal") %>% select(minute, shot.outcome.name, team.name, player.name, last.name), 
+            by = c("minute", "team.name")) %>% 
+  
+  # Add data on time of goal...
+  mutate(minute_goal = minute + 1,
+         
+         # ...and total xG after goal as well as label of goal info for plotting purposes
+         rollsum_goal = rollsum + sumxg,
+         player_label = case_when(shot.outcome.name == "Goal" ~ glue("{last.name}: {sumxg %>% signif(digits = 2)} xG"),
+                                  TRUE ~ ""))
+
+
+
+
+
+
+# Create small vector of total xG for each team, for plotting purposes
+tot_events_df <- events_xg %>% 
+  pull(tot_xg)
+
+
+
+# Create accumulated xG plot and save as events_rollsum_xgplot
+# Take events_rollsum dataframe...
+events_rollsum_xgplot <- events_rollsum %>%
+  
+  # Plot minute on x axis, cumulative sum of xG to that minute on y axis, color lines by team name
+  ggplot(aes(x = minute, y = rollsum, 
+             group = team.name, color = team.name)) +
+  
+  # Create lines with thickness 2.5
+  geom_line(size = 2.5) +
+  
+  # Create labels for each goal
+  # Note the data is ONLY the goal events!
+  geom_label_repel(data = events_rollsum %>% filter(shot.outcome.name == "Goal"),
+             
+                   # Where to place the labels?
+                   aes(x = minute_goal, y = rollsum_goal,
+                      # What color should they be, and what should they say? 
+                      color = team.name, label = player_label),
+             
+                   # Arguments to help avoid overlap
+                   nudge_x = 6, nudge_y = 0.15,
+            
+                   # Don't add a legend for these labels
+                   show.legend = FALSE) +
+  
+  # Create points (circles) for each goal
+  # Note the data is ONLY the goal events!
+  geom_point(data = events_rollsum %>% filter(shot.outcome.name == "Goal"),
+             aes(x = minute_goal, y = rollsum_goal, color = team.name), show.legend = FALSE,
+             # Define size and shape of the circles
+             size = 5, shape = 21, fill = "white", stroke = 1.25) +
+  
+  # Manually set the colors of the chart to be those of the teams (specific red and blue hex color codes)
+  scale_color_manual(values = c("Washington Spirit" = "#c31b32",
+                                 "North Carolina Courage" = "#008997"),
+                     labels = c("<b style ='color:#c31b32'>Spirit</b>", 
+                                "<b style='color: #008997'>Courage</b>")) +
+  scale_fill_manual(values = c("Washington Spirit" = "#c31b32",
+                               "North Carolina Courage" = "#008997")) +
+  
+  # Format the x- and y-axis tick marks, labels, and limits
+  scale_x_continuous(breaks = c(seq(0, 90, by = 5), 94),
+                     labels = c(seq(0, 40, by = 5), "HT", 
+                                seq(50, 90, by = 5), "FT"),
+                     expand = c(0.01, 0),
+                     limits = c(0, 94)) +
+  
+  # Create a secondary y-axis (on the right) with only two marks at the total xG values for each team
+  scale_y_continuous(sec.axis = sec_axis(~ ., breaks = tot_events_df)) +
+  
+  # Give the chart a title, subtitle, and axis labels
+  # Note the title here uses CSS formatting, which is something you don't know about yet. Don't worry about it.
+  labs(title = "<b style='color: #c31b32'>Washington Spirit: 2 </b> <br> <b style ='color:#008997'>NC Courage: 4 </b>",
+       subtitle = "April 15th, 2018",
+       x = NULL,
+       y = "Expected Goals") +
+  
+  # Get rid of some extraneous elements
+  theme_minimal() +
+  
+  # Fiddle with the format of the chart
+  theme(plot.title = element_markdown(size = 40),
+        plot.subtitle = element_text(size = 18,
+                                     color = "grey20"),
+        axis.title = element_text(size = 18, color = "grey20"),
+        axis.text = element_text(size = 16, face = "bold"),
+        panel.grid.minor = element_blank(),
+        legend.text = element_markdown(size = 16),
+        legend.position = "bottom",
+        legend.direction = "horizontal",
+        legend.title = element_blank())
+
+# Print plot
+events_rollsum_xgplot
+
+```
+
+<mark>**Lab Activity 5**</mark>: 
+
+1. What information is contained in the above plot?
+
+2. Did the "better team" per xG win the game?
+
+3. How could you criticize the above chart?
+
+4. Can you figure out how we might change the above code in order to get the results for a different match?
+
+### Passing Maps
+
+#### Basic Maps
+
+The first thing we'll do is create a simple passing map for the Spirit-Courage match, based off modified code from pages 22-24 of the StatsBomb Guide.
+
+```{r pass_map_basic}
+
+# Take events data, and
+passes <- events %>%
+  
+  mutate(pass.outcome.name = replace_na(pass.outcome.name, "Complete")) %>% 
+  
+  # Look at only passes. Could also filter to passes from a specific player, team, pass type, locations, etc.
+  filter(type.name=="Pass", possession_team.name == "North Carolina Courage") #%>%
+ 
+  # Look at only passes into the box
+  # filter(pass.end_location.x>=102 & pass.end_location.y<=62 & pass.end_location.y>=18)
+
+
+
+# Create the plot
+
+# Lay down basic pitch
+create_Pitch() +
+  
+  # Add pass lines
+  geom_segment(data = passes,
+               
+               # Set start and end positions for the arrows. May also add data by color, line type here
+               aes(x = location.x, y = location.y, 
+                   xend = pass.end_location.x, 
+                   yend = pass.end_location.y,
+                   # color = pass.outcome.name,
+                   # color = possession_team.name
+                   ),
+               
+               # Specify some things about how the arrows should look
+               lineend = "round", size = 0.5, 
+               arrow = arrow(length = unit(0.07, "inches"), ends = "last", type = "open")) +
+  
+  # Add title and subtitle
+  labs(title = "Passing Map, NC Courage", subtitle = "Washington Spirit-NC Courage, 2018-04-15") +
+  
+  # Remove any legend titles
+  theme(legend.title = element_blank()) +
+  
+  # Flip the y-coordinates so the passes plot correctly 
+  # Always needed - SEE Appendix 2,
+  # https://github.com/statsbomb/open-data/blob/master/doc/StatsBomb%20Open%20Data%20Specification%20v1.1.pdf
+  scale_y_reverse() +
+  
+  # "Fix" the aspect ratio so the pitch doesn't get squished or stretched
+  coord_fixed(ratio = 105/100)
+
+```
+
+That's a pretty basic passing map.
+
+<mark>**Lab Activity 6**</mark>: 
+
+1. What information can you glean from the above plot?
+
+2. How might you change it? Would you add any information? Subtract it?
+
+3. Try to modify the above code by a.) limiting to only passes into the box; b.) adding code to look at only a specific player; c.) coloring the arrows by outcome; d.) somehow adding information on which team made which pass
+
+4. After adding information on which team made which pass, what do you notice about how the X-Y coordinate data is stored and oriented?
+
+![StatsBomb pitch coordinates](https://miro.medium.com/max/1838/0*-53dU_CfPlYYLP4a)
+
+```{r pass_map_coords}
+
+passes %>% 
+  select(possession_team.name, location.x, location.y, pass.end_location.x, pass.end_location.y) %>% 
+  head(20)
+
+```
+
+#### Passing Networks
+
+Finally we're going to do a basic pass network visualization for the North Carolina Courage in their match against the Spirit, once again using the `soccermatics` package.
+
+```{r pass_map_network}
+
+events %>%
+  filter(team.name == "North Carolina Courage") %>%
+  soccerPassmap(fill = "lightblue", arrow = "r",
+                title = "NC Courage (vs Spirit, 4/15/2018)",
+                lengthPitch = 120, widthPitch = 80)
+
+```
+
+<mark>**Lab Activity 7**</mark>: 
+
+1. What do you think the locations of the circles mean? The sizes? The thicknesses of the lines? What are the most common passing pairs? The [What is a Passing Network? section of this blog post](https://statsbomb.com/2018/08/explaining-xgchain-passing-networks/) may help.
+
+2. What information about team structure and strategies can you glean from the above plot?
+
+3. Who is the North Carolina Courage's keeper?
+
+
+
+
+
+### Other Things You Could Do
+
+The [StatsBomb Guide](https://statsbomb.com/wp-content/uploads/2021/11/Working-with-R.pdf), [this blog post](https://ryo-n7.github.io/2019-08-21-visualize-soccer-statsbomb-part-1/), and the [`soccermatics` package page](https://github.com/JoGall/soccermatics) have some additional easy-to-follow examples for things you can do with this data, including pass partner plots, xG and xA calculations, maps of defensive actions, and many others ideas.
+
+But there are a near-infinite other number of things you could do. Search around on your own, play around with the data, and get your hands dirty!
+
+
+# Conclusion and Credit
+
+Now you're well equipped to do some basic soccer analytics in R. Great job!
+
+
+# Lab HW 5
+
+You will work on this lab with 1 partner of your choosing. You should answer these in an RMarkdown document, knit to **PDF** and submit on Canvas. Please turn in a single lab PDF with both your names on it.
+
+<mark>**HW Q1**</mark>: Create a new passing network graph for a different team and match. It must be for a non-NWSL match (that is, the data should come from a different "competition" in the free StatsBomb data).
+
+Fill the circles using one of that team's primary colors.
+
+Then answer the questions from Lab Activity 7, Questions 1-2 for this new chart. Note we may have answered question 1 in class, but I'm looking for you to write up that answer here. (4 pts)
+
+<mark>**HW Q2**</mark>: Re-create the graphic from Data Use Case 5 in the StatsBomb Guide (pages 29-36). Note the data they start with called `events` is not the same as our `events` above - it's event data from an entire season, not just one match.
+
+You may use the same data the StatsBomb Guide uses or choose a different league and year.
+
+**In your own words** comment your code to explain what it's doing. Use the level of detail of comments I provided for the xG Accumulation Plot code above as a guide for what I want to see. The only thing you may have difficulty describing is the `pivot_longer()` function since you've never seen it before. My advice is to try and compare the data before to the data after you use `pivot_longer()` and attempt to describe how they're different. You might also find the [examples at this link](https://tidyr.tidyverse.org/reference/pivot_longer.html#examples) helpful. I will give you some leeway here, though.
+
+Then briefly interpret the plot in 1-2 sentences. (5 pts)
+
+General organization and clarity of the report you turn in is worth 1 pt.

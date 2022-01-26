@@ -1,0 +1,156 @@
+---
+title: "Tutorial 4 - Football"
+
+author: "Zachary Binney, PhD"
+date: "October 2021"
+
+output: html_document
+description: "Football Analytics"
+---
+
+```{r setup}
+pacman::p_load(tidyverse, nflfastR, ggimage, ggrepel)
+
+```
+
+# Introduction to `nflfastR`
+
+The bulk of this tutorial lab will be focused on learning to use the `nflfastR` package to analyze their extremely rich play-by-play database. 
+
+It's far from the only source of football data out there - there's also [Pro-Football-Reference](https://www.pro-football-reference.com/), the NFL's [Big Data Bowl datasets of tracking data](https://operations.nfl.com/gameday/analytics/big-data-bowl/2020-21-big-data-bowl/) (some datasets available under each individual competition on Kaggle), [Open Source Football](https://www.opensourcefootball.com/), the [`cfbscrapR` package for football](https://saiemgilani.github.io/cfbfastR/), paid or free data from organizations like [Pro Football Focus](https://www.pff.com/) and [Football Outsiders](https://www.footballoutsiders.com/), among many others.
+
+But `nflfastR` is free, popular, and allows you to answer a wide variety of questions, so it's where our focus will be.
+
+(Sidenote: if there's ever data you want in any sport for a particular analysis but it's not available for free, come talk to me. There's a good chance I can buy it for you using research funds provided to me by the College!)
+
+## Working Through ["A Beginner's Guide to `nflfastR`"](https://www.nflfastr.com/articles/beginners_guide.html), Plus Some Other Interludes
+
+<mark>**Lab Activity 1**</mark>:
+
+1. Start by navigating to the link above and clicking on the "Setup > Load Packages" links on the right hand side. Let's work through that together.
+
+2. Now let's work through "Load Data", but let's load the year 2021 rather than 2019.
+
+3. Now let's work through the "Basics: How to look at your data" section. This is basically like the data exploration work we did in the earlier baseball tutorials, but it's good to practice!
+
+4. Now let's work through the "Some basic stuff: Part 1" section. This covers grouped summaries, `mutate()`, and `case_when()` again, but we can always use a review.
+
+    We'll then create a basic plot of which teams are "pass-happiest" and "run-happiest."
+    
+5. Let's take a little break from this tutorial and write some code of our own. Let's look at the distribution of EPA on "plays from scrimmage" (runs and passes). Can you describe the distribution?
+    
+6. Now let's skip to the "Figures with QB stats" section and work through that. 
+
+    We'll create some plots using **team colors** and **team logos** to look at quarterback efficiency metrics.
+    
+7. Let's have a little more fun with QBs. Often times commentators like to use two labels for QBs: "gunslingers" and "game managers." 
+
+    How might we define those labels using `nflfastR` data?
+    
+    Once we've decided how to define those labels, let's check which QBs meet our definitions. Are they who we'd expect based on our preconceptions, or not?
+    
+8. Finally, let's look at overall team quality by (almost) replicating the [Team Tiers plots here](https://rbsdm.com/stats/stats/).
+
+```{r team_tiers}
+# Load data
+pbp21 <- load_pbp(2021) %>% 
+    # Filter out play-by-play entries without EPA or possessing team listed (e.g. timeouts). 
+    # Include only runs and passes and plays with penalties
+    filter(!is.na(epa), !is.na(posteam), play_type %in% c("run", "pass") | penalty == 1)
+    
+
+
+# Calculate mean offensive and defensive EPA per play by team
+off_epa <- pbp21 %>% 
+  group_by(posteam) %>% # Group by possessing team
+  summarize(mean_off_epa = sum(epa)/n())
+
+def_epa <- pbp21 %>% 
+  group_by(defteam) %>% # Group by defensive team
+  summarize(mean_def_epa = sum(epa)/n()) # Note good defensive EPA will be negative because 
+                                         # EPA calculated from offense's point of view
+
+# Calculate overall EPA for mean lines
+mean_off_epa <- mean(pbp21$epa)
+
+# Join offensive and defensive EPA, as well as team colors and logos
+tiers <- off_epa %>% 
+  left_join(def_epa, by = c("posteam" = "defteam")) %>% 
+  left_join(teams_colors_logos, by = c("posteam" = "team_abbr")) %>% 
+  rename(team = posteam)
+
+# Create team tiers plot
+tiers %>%
+  ggplot(aes(x = mean_off_epa, y = mean_def_epa)) +
+  
+  #horizontal line with mean defensive EPA. Does not need to be multipled by -1 because of reversed y-axis below
+  geom_hline(yintercept = mean_off_epa, color = "red", linetype = "dashed", alpha=0.5) +
+  
+  #vertical line with mean offensive EPA
+  geom_vline(xintercept =  mean_off_epa, color = "red", linetype = "dashed", alpha=0.5) +
+  
+  #Add points for each team with the logos
+  geom_image(aes(image = team_logo_espn), asp = 16 / 9) +
+  
+  # Flip defensive EPA axis so negative (better) is higher
+  scale_y_reverse() +
+  
+  #titles and caption
+  labs(x = "Offensive EPA Per Play",
+       y = "Defensive EPA Per Play",
+       title = "NFL Team Tiers, 2021, Season to Date",
+       caption = "Data: @nflfastR") +
+  
+  # Remove minor grid lines to reduce clutter
+  theme(panel.grid.minor = element_blank()) +
+
+  # Add in "tier separator" lines
+  geom_abline(slope = -1.5, intercept = c(seq(-0.3, 0.4, by = 0.1)), color = "gray")
+
+```
+
+
+## Next Steps
+
+We won't cover the last two sections, "Real life example: let's build a win total model" and "Next Steps." BUT I highly encourage you to review them on your own if you're interested and motivated to learn more. 
+
+The former section we won't cover just because I don't want to cover more statistical modeling in this course than we already have.
+
+The **Next Steps** section, though, is a treasure trove of other coding examples for you to learn from and be inspired by! In addition you should:
+
+* Check out [rbsdm.com](https://rbsdm.com/stats/stats/) for lots of examples of `nflfastR` analyses in particular. 
+
+* Check out the other football (or other sport) related coding examples in Brendan Kent's blog post [Coding for Sports Analytics: How to Get Started](https://brendankent.com/2020/09/15/coding-for-sports-analytics-resources-to-get-started/).
+
+* To improve on the graphics we created above (and to see examples of how to create many other interesting charts with `nflfastR`), check out Thomas Mock's [NFL Plotting Cookbook](https://jthomasmock.github.io/nfl_plotting_cookbook/)
+
+* I *strongly encourage* you to get a Twitter account if you don't have one already and follow accounts like @benbbaldwin, @statsbylopez, @tejfbanalytics, @CowboysStats, @EthanCDouglas, @KeeganAbdoo, @LeeSharpeNFL, @PFF_Eric, @binney_z, and the others they follow and retweet.That way you can start to build up a repository of ideas, analyses, and data sources to inspire and aid you in your own work.
+
+# Conclusion and Credit
+
+Now you're well equipped to do some basic (American) football analytics in R. Great job!
+
+Parts of this lab and HW were adapted from Mike Lopez's Statistics in Sports course [here](https://github.com/statsbylopez/StatsSports20), and it of course relied heavily on the [`nflfastR` package beginner's guide](https://www.nflfastr.com/articles/beginners_guide.html#real-life-example-let-s-make-a-win-total-model).
+
+
+# Lab HW 4
+
+You will work on this lab with 1 partner of your choosing. You should answer these in an RMarkdown document, knit to **PDF** and submit on Canvas. Please turn in a single lab PDF with both your names on it.
+
+<mark>**HW Q1**</mark>: Above we looked at the distribution of EPA for scrimmage plays overall. Now let's break that down by running vs. passing plays. Produce these two distributions in a *single* `ggplot()` call using **facetting**. Facetting is a technique you don't know yet, but it splits a single plot into 2 or more "sub-plots" and arranges them together on a grid. Part of your challenge with this question is to learn how to do a simple facet on your own - here's [one tutorial](http://www.sthda.com/english/wiki/ggplot2-facet-split-a-plot-into-a-matrix-of-panels) but you're welcome to use anything else you find online! 
+
+Make sure your facetted plot has a shape/arrangement that allows us to easily "eyeball" the comparison of the distributions of EPA by play type.
+
+Once you've produced your chart, interpret it briefly in 2-4 sentences of text. Which play type appears to be more efficient, run or pass? What does that imply for football strategy? (3 pts)
+
+<mark>**HW Q2**</mark>: Above we also worked on how to differentiate "gunslinger" from "game manager" quarterbacks (QBs). Using any method we discussed in class or another method of your own choosing, create a plot that helps us look at where QBs fall on this spectrum so far in 2021. Explain the thinking behind your plot and your main findings (e.g. who are the most extreme QBs on either side). (2 pts)
+
+<mark>**HW Q3**</mark>: 
+
+* Come up with a question about the NFL, AND 
+
+* Answer it by creating a new chart of your own design from the data in `nflfastR`. For inspiration you may use any or all of the resources I mentioned above, but you should have to write (or at least modify) the code for your chart yourself. That is, don't simply find a chart with code attached and copy it - I would consider that an honor code violation.
+
+Note a full answer here will consist of stating a question, creating a plot, and interpreting it to answer your question. (4 pts)
+
+General organization and clarity of the report you turn in is worth 1 pt.

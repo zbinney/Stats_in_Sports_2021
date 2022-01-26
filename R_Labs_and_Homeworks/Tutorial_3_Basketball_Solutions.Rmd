@@ -1,0 +1,865 @@
+---
+title: "Tutorial 3 - Basketball"
+
+author: "Zachary Binney, PhD"
+date: "August 2021"
+
+output: html_document
+description: "Basketball Analytics"
+---
+
+```{r setup}
+# devtools::install_github(repo = "saiemgilani/hoopR")
+
+pacman::p_load(tidyverse, hoopR, cowplot)
+
+```
+
+# Creating Shot Charts
+
+Today's main focus is going to be on creating cool visualizations, both because it's fun and because it can teach us a lot about basketball. Specifically we're going to focus on shot charts.
+
+The first thing we need is shot data, including information on the location of each shot.
+
+<mark>**Lab Activity 1**</mark>: First let's take a moment to talk about how might we encode the location of a shot on a basketball court in a way that a computer could understand and that could be entered into a database?
+
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+
+## Getting Shot Data
+
+OK, now we need to get this data - let's say for all shots from the 2018-19 season. Luckily the NBA actually has this data publicly accessible through an **Application Programming Interface (API)**.
+
+What the hell is an API? It's a way for computers to talk to each other, basically. The most common use you'll have for it as a sports analyst is to use your computer to request data from another computer - in this specific case, from the NBA's database servers.
+
+Working directly with the NBA's API can be quite difficult. Fortunately, Saiem Gilani has written the `hoopR` (get it???) package with a bunch of useful functions to help us out. (The `hoopR` package also works with men's college basketball data. The package `ncaahoopR` also works for men's college basketball data. The package `wncaahoopR` accesses data for the women's college game. I'm uncertain of a package for the WNBA but it may exist - if you find one let me know!)
+
+OK, here's the code we'd use to get this data for the 2018-19 season. DON'T USE IT. We don't want to flood the NBA Stats API with a bunch of requests for 220,000 shots. I'm just including it so you know what it looks like.
+
+```{r get_shots, eval = FALSE}
+
+shots18 <- nba_shotchartdetail(
+  context_measure = "FGA",
+  date_from = "",
+  date_to = "",
+  game_id = "",
+  game_segment = "",
+  last_n_games = 0,
+  league_id = "00",
+  location = "",
+  month = 0,
+  opponent_team_id = 0,
+  outcome = "",
+  period = 0,
+  player_id = "0", # This is "0" to indicate we want all players. You'd use a specific player's ID (more in a moment) here to get the data just for them
+  player_position = "",
+  rookie_year = "",
+  season = "2018-19", # We want the 2018-19 season
+  season_segment = "",
+  season_type = "Regular Season", # Want regular season, not playoffs
+  team_id = 0,
+  vs_conference = "",
+  vs_division = ""
+)[[1]]
+```
+
+<mark>**Lab Activity 2**</mark>: Can you intuit how you might change the code above to get, say, shot data for all players for just the last 30 days (if you were doing this mid-season)?
+
+Note the `[[1]]` on the last line. This probably looks impenetrable to you. I don't want to get into what it means right now except to say it changes the data from a **list** (a flexible type of data structure in R) to the more familiar rectangular **data frame**.
+
+### Importing Local Data
+
+Anyway, instead of querying the NBA API directly I've provided the data for you on Canvas.
+
+<mark>**Lab Activity 3**</mark>: 
+
+1. Download the data and place it into the same location where this script is.
+
+2. Speaking of which, let's take a moment to talk about where you're saving these and data/project organization.
+
+#### Do You Have a Moment to Talk About Working Directories?
+
+To import data from a file, we first need to know how R looks for files.
+
+Whenever you open RStudio it sets a **working directory**, which is the place where it's going to look for (or in the case of exporting, try to write) any files by default, *unless you specify otherwise*. You can see where it is using the `getwd()` command. Try it in your own script. 
+
+
+```{r getwd, eval = FALSE}
+#Find out what your working directory is
+getwd()
+
+```
+
+I *typically* want my **working directory** to be either: 
+
+1. The folder where the script I'm working in is located, OR
+
+2. If it's part of an R Project the parent directory for the project itself (we haven't learned about these yet, please don't worry about them).
+
+But what if you use `getwd()` and notice R/RStudio has chosen a different working directory for some reason? 
+
+There are two ways to set the **working directory** to be the location of the file you're working in. I usually like to include this code in the top of my files:
+
+```{r here, eval = FALSE}
+#Set the working directory to be the location of the script 
+#or R Markdown document you're working in
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+```
+
+Alternatively, more recent versions of RStudio allow you to do this manually by going to the top menu and clicking `Session > Set Working Directory... > To Source File Location`.
+
+<mark>**Lab Activity 4**</mark>: Set your working directory to be the location of this script.
+
+Once we set a working directory we can tell R to search for a file in that directory very easily with the code below.
+
+```{r import_shot_data}
+
+shots18 <- read.csv("./shots_1819.csv")
+
+```
+
+The `.` means "look in the working directory." I could've also fed a full file path (for example, `"C:/Users/zbinney/OneDrive - Emory University/Statistics in Sports/R_Labs_and_Homeworks/shots_1819.csv"`), but isn't our code much cleaner? It will also work more easily on multiple machines, whereas the full file path will only work on my laptop.
+
+## Exploring Shot Data
+
+<mark>**Lab Activity 5**</mark>: 
+
+1. Take a moment using the skills you've already learned to explore this shot data. What does each row represent? What sort of data is contained in this data frame? What columns will we likely use to create our shot charts?
+
+2. What type of data is `SHOT_DISTANCE` stored as?
+
+3. What do you think `LOC_X` and `LOC_Y` mean? HINT: Start by checking the minimum and maximum values of these variables and comparing them to what you know about the dimensions of an NBA court (50 feet x 94 feet).
+
+```{r x_and_y, include = FALSE}
+
+summary(shots18$LOC_X)
+summary(shots18$LOC_Y)
+
+```
+
+4. Let's make `SHOT_DISTANCE` a little more precise. Think back to middle school math - any ideas how to do that?
+
+```{r pythagorean_dist, include = FALSE}
+
+shots18 <- shots18 %>% 
+  mutate(LOC_X = LOC_X/10,
+         LOC_Y = LOC_Y/10) %>% 
+  mutate(SHOT_DISTANCE = sqrt(LOC_X^2 + LOC_Y^2))
+
+```
+
+5. Create a plot to look at the distribution of shot distances from the 2018-19 season. Describe the distribution and link it to what you know about current NBA strategies. Does anything surprise you?
+
+```{r}
+shots18 %>% 
+  ggplot(aes(x = SHOT_DISTANCE)) +
+  geom_density()
+```
+
+
+6. Who had the two farthest *made* shots in the 2018-19 season? Does that surprise you at all (at least one name probably shouldn't)?
+
+```{r}
+shots18 %>% 
+  arrange(desc(SHOT_DISTANCE)) %>% 
+  head(2)
+```
+
+
+## Interlude: Data Cleaning
+
+An unsexy but very necessary part of sports analytis is **data cleaning**. A lot of data, when you get it, is full of errors and other weird issues - mis-formatted variables, typos, implausible data values, and other incorrect or otherwise un-analyzable data. 
+
+Many data analysts report spending 60-80% of their time just *prepping* data for analysis, not doing actual analyses. This is consistent with my experience. But, to try and just get you interested in the field we're skipping over a lot of this stuff and working with pre-cleaned because people find cleaning "boring."
+
+Still, I want to give you at least a *little* experience with the type of cleaning you'll have to do in the real world. The NBA API involves a *lot* of data quality checks and processes to clean the data before sending it out, so this is one of the better datasets you'll ever get. But even then you always want to check for issues.
+
+A good place to start is by running a simple `summary()` on the data frame and looking for anything implausible or downright impossible:
+
+```{r cleaning}
+
+summary(shots18)
+
+```
+
+<mark>**Lab Activity 6**</mark>: Let's look through this together and decide if anything looks weird enough to merit looking into further.
+
+Let's now check for implausible records of shots. In the NBA, the distance the 3-pt line is from the hoops ranges from 22 feet in the corners to 23.75 feet at the top of the arc. Armed with this knowledge, are there any implausible shots in our data?
+
+First let's check the top and bottom few shot distances for 2-pt shots:
+
+```{r cleaning_2pt}
+
+# Create data frame of just 2-pt shots, ordered by distance
+temp_2pt <- shots18 %>% 
+  filter(SHOT_TYPE == "2PT Field Goal") %>% 
+  select(PLAYER_NAME, TEAM_NAME, EVENT_TYPE:LOC_Y) %>% 
+  arrange(SHOT_DISTANCE)
+
+# Print top and bottom 30 2-pt shot distances
+head(temp_2pt, 30)
+tail(temp_2pt, 30)
+
+```
+
+Then for 3-pt shots:
+
+```{r cleaning_3pt}
+
+# Create data frame of just 2-pt shots, ordered by distance
+temp_3pt <- shots18 %>% 
+  filter(SHOT_TYPE == "3PT Field Goal") %>% 
+  select(GAME_EVENT_ID, PLAYER_NAME, TEAM_NAME, PERIOD, EVENT_TYPE:LOC_Y) %>% 
+  arrange(SHOT_DISTANCE)
+
+# Print top and bottom 30 2-pt shot distances
+head(temp_3pt, 30)
+tail(temp_3pt, 30)
+
+```
+
+<mark>**Lab Activity 7**</mark>: Do you see any shots that worry you? Or any data that needs to be cleaned?
+
+If we identified something that needed to be addressed, we'd have two basic options:
+
+1. Delete the offending observations entirely using `filter()`. This is probably fine if it's a small number of shots, but you never want to throw out data - and especially a meaningfully large proportion of your data - if you can avoid it. Here's some example code, though:
+
+```{r clean_filter, eval = FALSE}
+
+shots18_clean <- shots18 %>% 
+  filter(SHOT_DIST>=21 | SHOT_TYPE == "2PT Field Goal") # Filter OUT shots that don't meet EITHER criterion (21 feet or longer OR 2 pts)
+
+```
+
+2. Correct the data. This is tricky though because it requires finding - or assuming - some truth. For example, when whether the shot is a 2- or 3-pointer conflicts with the shot distance, which is correct? You could go back and look at game film for every borderline shot, but that would take days. It's always a balancing act, and looking up case-by-case truths becomes less possible the larger the data you're working with is.
+
+## Plotting Individual Shot Charts
+
+The first thing we can do is create a simple scatterplot of shots, colored by make or miss. But to not overwhelm our computers with 220,000 shots, let's just do one player: Jaylen Brown of the Celtics.
+
+```{r scatter_basic}
+
+#Scatterplot of all shots by Jaylen Brown
+shots18 %>% 
+  filter(PLAYER_NAME == "Jaylen Brown") %>% 
+  ggplot(aes(x = LOC_X, y = LOC_Y, color = EVENT_TYPE)) +
+  geom_point() +
+  labs(X = "", y = "", title = "Regular Season Shots by Jaylen Brown, 2018-19") +
+  theme(legend.title = element_blank()) # Remove the legend title because "EVENT_TYPE" looks bad and isn't necessary
+
+```
+
+Hopefully this looks kind of familiar already. But it would probably be nicer to have a court overlaid as the background, right? To do this we're going to use the `plot_court()` function from Todd Schneider's [`ballr`](https://github.com/toddwschneider/ballr) (get it? get it???) package. (`ballr` actually allows you to create interactive shot charts very easily, but I wanted to peel back the layers of the onion a little and show you how to do it yourself.)
+
+Unfortuantely R doesn't know `plot_court()` - we have to teach it to R. That's what the code below is doing. It's going to look very scary - don't worry about interpreting it. Just know it's basically teaching R how to draw a basketball court. That's it.
+
+```{r plot_court_function}
+court_themes = list(
+  light = list(
+    court = '#fffcf2',
+    lines = '#999999',
+    text = '#222222',
+    made = '#00bfc4',
+    missed = '#f8766d',
+    hex_border_size = 0.3,
+    hex_border_color = "#cccccc"
+  ),
+  dark = list(
+    court = '#000004',
+    lines = '#999999',
+    text = '#f0f0f0',
+    made = '#00bfc4',
+    missed = '#f8766d',
+    hex_border_size = 0,
+    hex_border_color = "#000000"
+  )
+)
+
+circle_points = function(center = c(0, 0), radius = 1, npoints = 360) {
+  angles = seq(0, 2 * pi, length.out = npoints)
+  return(tibble(x = center[1] + radius * cos(angles),
+                    y = center[2] + radius * sin(angles)))
+}
+
+width = 50
+height = 94 / 2
+key_height = 19
+inner_key_width = 12
+outer_key_width = 16
+backboard_width = 6
+backboard_offset = 4
+neck_length = 0.5
+hoop_radius = 0.75
+hoop_center_y = backboard_offset + neck_length + hoop_radius
+three_point_radius = 23.75
+three_point_side_radius = 22
+three_point_side_height = 14
+
+plot_court = function(court_theme = court_themes$dark, use_short_three = FALSE) {
+  if (use_short_three) {
+    three_point_radius = 22
+    three_point_side_height = 0
+  }
+
+  court_points = tibble(
+    x = c(width / 2, width / 2, -width / 2, -width / 2, width / 2),
+    y = c(height, 0, 0, height, height),
+    desc = "perimeter"
+  )
+
+  court_points = bind_rows(court_points , tibble(
+    x = c(outer_key_width / 2, outer_key_width / 2, -outer_key_width / 2, -outer_key_width / 2),
+    y = c(0, key_height, key_height, 0),
+    desc = "outer_key"
+  ))
+
+  court_points = bind_rows(court_points , tibble(
+    x = c(-backboard_width / 2, backboard_width / 2),
+    y = c(backboard_offset, backboard_offset),
+    desc = "backboard"
+  ))
+
+  court_points = bind_rows(court_points , tibble(
+    x = c(0, 0), y = c(backboard_offset, backboard_offset + neck_length), desc = "neck"
+  ))
+
+  foul_circle = circle_points(center = c(0, key_height), radius = inner_key_width / 2)
+
+  foul_circle_top = filter(foul_circle, y > key_height) %>%
+    mutate(desc = "foul_circle_top")
+
+  foul_circle_bottom = filter(foul_circle, y < key_height) %>%
+    mutate(
+      angle = atan((y - key_height) / x) * 180 / pi,
+      angle_group = floor((angle - 5.625) / 11.25),
+      desc = paste0("foul_circle_bottom_", angle_group)
+    ) %>%
+    filter(angle_group %% 2 == 0) %>%
+    select(x, y, desc)
+
+  hoop = circle_points(center = c(0, hoop_center_y), radius = hoop_radius) %>%
+    mutate(desc = "hoop")
+
+  restricted = circle_points(center = c(0, hoop_center_y), radius = 4) %>%
+    filter(y >= hoop_center_y) %>%
+    mutate(desc = "restricted")
+
+  three_point_circle = circle_points(center = c(0, hoop_center_y), radius = three_point_radius) %>%
+    filter(y >= three_point_side_height, y >= hoop_center_y)
+
+  three_point_line = tibble(
+    x = c(three_point_side_radius, three_point_side_radius, three_point_circle$x, -three_point_side_radius, -three_point_side_radius),
+    y = c(0, three_point_side_height, three_point_circle$y, three_point_side_height, 0),
+    desc = "three_point_line"
+  )
+
+  court_points = bind_rows(
+    court_points,
+    foul_circle_top,
+    foul_circle_bottom,
+    hoop,
+    restricted,
+    three_point_line
+  )
+
+  court_points <<- court_points
+
+  ggplot() +
+    geom_path(
+      data = court_points,
+      aes(x = x, y = y, group = desc),
+      color = court_theme$lines
+    ) +
+    coord_fixed(ylim = c(0, 35), xlim = c(-25, 25)) +
+    theme_minimal(base_size = 16) +
+    theme(
+      text = element_text(color = court_theme$text),
+      plot.background = element_rect(fill = court_theme$court, color = court_theme$court),
+      panel.background = element_rect(fill = court_theme$court, color = court_theme$court),
+      panel.grid = element_blank(),
+      panel.border = element_blank(),
+      axis.text = element_blank(),
+      axis.title = element_blank(),
+      axis.ticks = element_blank(),
+      legend.background = element_rect(fill = court_theme$court, color = court_theme$court),
+      legend.margin = margin(-1, 0, 0, 0, unit = "lines"),
+      legend.position = "bottom",
+      legend.key = element_blank(),
+      legend.text = element_text(size = rel(0.7))
+    )
+}
+```
+
+Now that we've taught R how to plot a court, we can add it to our plot above for Jaylen Brown!
+
+```{r plot_w_court}
+
+# Create base court plot
+base_court <- plot_court(court_themes$light)
+
+#Add scatterplot of Jaylen Brown's shots on top
+base_court + 
+  geom_point(data = shots18 %>% filter(PLAYER_NAME == "Jaylen Brown"), # Do filtering inside geom_point()
+             
+             aes(x = LOC_X, y = LOC_Y + hoop_center_y, color = EVENT_TYPE)) +
+  
+  labs(X = "", y = "", title = "Jaylen Brown \n Regular Season, 2018-19") +
+  
+  theme(legend.title = element_blank(), # Remove the legend title because "EVENT_TYPE" looks bad and isn't necessary
+        plot.title = element_text(hjust = 0.5)) # Center align title
+  
+```
+
+<mark>**Lab Activity 8**</mark>: Change the above chart to plot all shots for your favorite *team*. Because so many shots will be plotted, consider either a.) changing the dot size or b.) changing the dot transparency to help with overplotting.
+
+Bonus: try out the dark court theme to see which you like better!
+
+```{r plot_w_court_team, include = FALSE}
+
+# Create base court plot
+base_court <- plot_court(court_themes$light)
+
+#Add scatterplot of Jaylen Brown's shots on top
+base_court + 
+  geom_point(data = shots18 %>% filter(TEAM_NAME == "Atlanta Hawks"), # Do filtering inside geom_point()
+             
+             aes(x = LOC_X, y = LOC_Y + hoop_center_y, color = EVENT_TYPE), alpha = 0.5, size = 1) +
+  
+  labs(X = "", y = "", title = "Atlanta Hawks \n Regular Season, 2018-19") +
+  
+  theme(legend.title = element_blank(), # Remove the legend title because "EVENT_TYPE" looks bad and isn't necessary
+        plot.title = element_text(hjust = 0.5)) # Center align title
+  
+```
+
+## Compare Two or More Players/Teams
+
+What if you wanted to compare two players side by side? No problem! Just create two plots and then display them in a grid using the `cowplot` package's `plot_grid()` function.
+
+```{r plot_w_court_2players}
+
+# Create base court plot
+base_court <- plot_court(court_themes$light)
+
+# Create one scatterplot
+p1 <- base_court + 
+  geom_point(data = shots18 %>% filter(PLAYER_NAME == "Jaylen Brown"), # Do filtering inside geom_point()
+             
+             aes(x = LOC_X, y = LOC_Y + hoop_center_y, color = EVENT_TYPE)) +
+  
+  labs(X = "", y = "", title = "Jaylen Brown \n Regular Season, 2018-19") +
+  
+  theme(legend.title = element_blank(), # Remove the legend title because "EVENT_TYPE" looks bad and isn't necessary
+        plot.title = element_text(hjust = 0.5)) # Center align title
+
+# Then another
+p2 <- base_court + 
+  geom_point(data = shots18 %>% filter(PLAYER_NAME == "Joel Embiid"), # Do filtering inside geom_point()
+             
+             aes(x = LOC_X, y = LOC_Y + hoop_center_y, color = EVENT_TYPE)) +
+  
+  labs(X = "", y = "", title = "Joel Embiid \n Regular Season, 2018-19") +
+  
+  theme(legend.title = element_blank(), # Remove the legend title because "EVENT_TYPE" looks bad and isn't necessary
+        plot.title = element_text(hjust = 0.5)) # Center align title
+
+# Use cowplot's plot_grid() function
+plot_grid(p1, p2)
+  
+```
+
+<mark>**Lab Activity 9**</mark>: Create charts to compare your two favorite players or teams!
+
+## Plotting Expected Value of Shots
+
+In the lecture we talked about the expected values of various shots. Let's investigate that further now.
+
+The coordinates we have are so specific they'll result in very small sample sizes if we don't bin them. Specifically, we'll bin them into areas that are 1 foot in width and height.
+
+```{r hexbin_num}
+
+# Bin our data before plotting
+shots18_bin <- shots18 %>% 
+  mutate(LOC_X_feet = round(LOC_X, 0), # Round X and Y locations to the nearest foot to create bins
+         LOC_Y_feet = round(LOC_Y + hoop_center_y, 0),
+         
+         pts = case_when(SHOT_TYPE == "3PT Field Goal" ~ 3, # New variable for 2 vs. 3 pt shot to allow for expected value calculations
+                         TRUE ~ 2)) %>%
+  
+  # Create new variables for number of shots and percentage of shots made in each bin
+  # as well as whether a bin had >550 shot attempts in a year (roughly, a top-50 location)
+  group_by(LOC_X_feet, LOC_Y_feet) %>% 
+  summarize(FGA = n(),
+            FGpct = mean(SHOT_MADE_FLAG),
+            exp_pts = round(mean(SHOT_MADE_FLAG*pts),1),
+            FGA_top50 = case_when(FGA >= 550 ~ 1,
+                                  TRUE ~ 0)) %>% 
+  ungroup()
+
+# Create base court plot
+base_court <- plot_court(court_themes$light)
+
+#Plot expected value and number of shots by bin
+
+base_court + 
+  
+  geom_point(data = shots18_bin %>% filter(FGA >= 50), # Exclude points with <50 FGA
+             aes(x = LOC_X_feet, y = LOC_Y_feet, 
+                 color = exp_pts, size = FGA)) + # Color points by expected value, size by FGA
+  
+  scale_size_continuous(range = c(0.5,4), # Manually set min and max point size 
+                        guide = "none") + # Remove size legend
+  
+  scale_color_viridis_c(option = "D", # Use pretty viridis color scheme rather than default
+                        breaks = c(0.4, 0.8, 1.2, 1.6), labels = c(0.4, 0.8, 1.2, 1.6)) + # Manually set color legend labels
+
+  # Specify axis labels, title, subtitle, caption, and color legend label
+  labs(X = "", y = "", title = "Expected Shot Value by Location",
+  subtitle = "2018-19 Regular Season\n Locations with >= 50 Shots",
+  caption = "Size proportional to number of attempts. \n Darker spots are top 50 shot locations.",
+  color = "Expected Points") +
+  
+  theme(legend.title = element_text(size = 10), # Change legend title and text font size
+        legend.text = element_text(size = 10), 
+        plot.title = element_text(hjust = 0.5, size = 14), # Change title size and center align
+        plot.subtitle = element_text(hjust = 0.5, size = 12), # Change subtitle size and center align
+        plot.caption = element_text(size = 8)) + # Change caption size
+  
+  guides(color = guide_colourbar(title.position="top", hjust = 0.5)) # Place color legend label on top of scale and center align
+```
+
+<mark>**Lab Activity 10**</mark>: What does this chart tell you about a.) proper NBA strategy and b.) actual NBA strategies?
+
+
+
+# Assessing Player Types
+
+Let's continue working with our shot data. Let's begin by summarizing each player's performance over the course of the season. If a player played on multiple teams we'll give him a different line for each team since his usage and performance could have changed from team to team:
+
+```{r player_sum}
+
+players18 <- shots18 %>% 
+  mutate(pts = case_when(SHOT_TYPE == "3PT Field Goal" ~ 3, # New variable for 2 vs. 3 pt shot
+                         TRUE ~ 2)) %>% 
+  group_by(PLAYER_NAME, TEAM_NAME) %>% 
+  summarize(FGA = n(), # Count rows to get FGA
+            FGM = sum(SHOT_MADE_FLAG), # Sum um 0/1 SHOT_MADE_FLAG to get FGM
+            
+            # Do a "Count If" equivalent to get number of 2 pt and 3pt FGA
+            FGA_2pt = sum(pts[pts==2])/2,
+            FGA_3pt = sum(pts[pts==3])/3,
+            
+            # Multiply those "count ifs" by SHOT_MADE_FLAG to get number of each type of FGM
+            FGM_2pt = sum(pts[pts==2]*SHOT_MADE_FLAG[pts==2])/2,
+            FGM_3pt = sum(pts[pts==3]*SHOT_MADE_FLAG[pts==3])/3) %>% 
+  ungroup()
+
+```
+
+<mark>**Lab Activity 11**</mark>: 
+
+1. Create new variables for FG% and eFG% (effective field goal percentage).
+
+2. Create a simple scatterplot of FG% vs. eFG% for all players with >= 50 FGA. 
+
+```{r eFG_scatter, include = FALSE}
+
+players18 <- players18 %>% 
+  mutate(FGpct = FGM/FGA,
+         eFGpct = (FGM + 0.5*FGM_3pt)/FGA)
+
+players18 %>% 
+  filter(FGA >= 50) %>% 
+  ggplot(aes(x = FGpct, y = eFGpct)) +
+  geom_point()
+
+```
+
+3. How would you describe the relationship between the two variables? Is that surprising?
+
+4. There are a few points that lie on the diagonal line. What does that mean about those players? HINT: Look at the eFG% formula.
+
+Now let's create a scatterplot of eFG% vs. number of shots for *all* players:
+
+```{r eFG_scatter_nshots}
+
+players18 %>% 
+  ggplot(aes(x = FGA, y = eFGpct)) +
+  geom_point()
+
+```
+
+<mark>**Lab Activity 12**</mark>: What pattern do you see in the above scatterplot? Can you explain why based on just a little bit of statistics knowledge? 
+
+
+## Mr. Heroball
+
+We'll define "Heroball" as taking the highest percentage of your team's shots.
+
+First we need the number of shots each team took. We can get this from another dataset of team box scores available in `hoopR`:
+
+```{r get_heroball_data}
+
+# Load 2018 team box score data
+team_box18 <- load_nba_team_box(2018)
+
+
+# Calculate shots per team
+team_data18 <- team_box18 %>% 
+  
+  # Extract FGA as the 4th character through the end from the character variable `field_goals_made...`
+  mutate(FGA = as.numeric(str_sub(field_goals_made_field_goals_attempted, start = 4))) %>% 
+
+  group_by(team_display_name, team_abbreviation) %>% 
+  summarize(FGA_team = sum(FGA)) %>% 
+  ungroup()
+
+```
+
+<mark>**Lab Activity 13**</mark>: 
+
+1. Wait a minute, there's something off about that team data. How many rows does it have? How many should it?
+
+2. Can you figure out what's going on and come up with a way to filter out the "teams" you don't want?
+
+Now we have to link this data into the data frame of players we created above. The way we do this is with a **join** - specifically, a `left_join()`. I don't want to get into extreme details, but here's a [great diagram](https://twitter.com/clairebcarroll/status/1428737096433475585?s=20) that explains what's happening.
+
+Basically, we have two data frames with different information: `players18` has data on player performance, and `team_data18` has data on team minutes and shots. But if we look closely, *they share a variable*: `TEAM_NAME` and `team_display_name` are the same - the name of the team. We can use that to "link" these two data frames like so:
+
+```{r heroball_merge}
+
+# Join team data to player data
+players18_team <- players18 %>% 
+  left_join(team_data18, by = c("TEAM_NAME" = "team_display_name"))
+
+```
+
+<mark>**Lab Activity 14**</mark>: 
+
+1. Identify Mr. Heroball. Note you may need to create a new variable first!
+
+```{r heroball_id, include = FALSE}
+
+# Who is Mr. Heroball?
+players18_team <- players18_team %>% 
+  mutate(hero_pct = FGA/FGA_team)
+
+players18_team %>% 
+  arrange(desc(hero_pct)) %>% 
+  head(10)
+
+```
+
+2. Is it a good or bad thing to play Heroball? 
+
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+
+3. Maybe it's good if you're a good shooter! Let's investigate this a bit further by creating a scatterplot of Heroball percentage vs. some measure of shooting ability for players with >750 shot attempts.
+
+```{r heroball_scatter}
+
+# Who is Mr. Heroball?
+players18_team %>% 
+  filter(FGA >= 750) %>% 
+  ggplot(aes(x = hero_pct, y = eFGpct)) +
+  
+  # Uses text labels rather than points for scatterplot
+  geom_text(aes(label = PLAYER_NAME))
+
+```
+
+4. What do you think about Mr. Heroball now after looking at this plot?
+
+5. What are some remaining limitations of our "Heroball" statistic?
+
+## Mr. Analytics
+
+We'll work to assign another title - Mr. Analytics - in the homework.
+
+## Defender of the Faith
+
+What about defense? The NBA play-by-play data actually contains data on who the closest defender is on each shot. One thing we could look at, then, is the shooting percentage on all shots where each player is the closest defender. 
+
+```{r get_defense, eval = FALSE}
+
+# Read in list of players to link to IDs
+players <- read.csv("./nba_players.csv") %>% 
+  select(PERSON_ID, DISPLAY_FIRST_LAST)
+
+# Code to grab defensive data from NBA API
+defense18 <- nba_playerdashptshotdefend(
+  date_from = "",
+  date_to = "",
+  game_segment = "",
+  last_n_games = 0,
+  league_id = "00",
+  location = "",
+  month = 0,
+  opponent_team_id = 0,
+  outcome = "",
+  per_mode = "Totals",
+  period = 0,
+  player_id = "0",
+  season = "2018-19",
+  season_segment = "",
+  season_type = "Regular Season",
+  team_id = "0",
+  vs_conference = "",
+  vs_division = ""
+)[[1]] %>% 
+  
+  # Table from API only has player ID; this code adds in player name from the `players` table above
+  mutate(CLOSE_DEF_PERSON_ID = as.numeric(CLOSE_DEF_PERSON_ID)) %>% 
+  left_join(players, by = c("CLOSE_DEF_PERSON_ID" = "PERSON_ID"))
+
+```
+
+<mark>**Lab Activity 15**</mark>: 
+
+1. Who were the top 5 defenders (with at least 50 FGA against):
+
+  * Overall?
+  
+  * From 3-point range?
+  
+  * From less than 6 feet (near the basket)?
+
+2. What are some problems with this metric? Can you relate it to another metric we saw in another sport?
+
+
+# Conclusion and Credit
+
+Now you're well equipped to create shot charts in R, have a better understanding of NBA analytics, and can create scatterplots with labels instead of points. Great job!
+
+Parts of this lab and HW were adapted from Mike Lopez's Statistics in Sports course [here](https://github.com/statsbylopez/StatsSports20), as well as the [`hoopr` package](https://saiemgilani.github.io/hoopR/reference/index.html#section-nba-data) and [`ballr` package](https://github.com/toddwschneider/ballr).
+
+
+# Lab HW 3
+
+Here are the questions for HW 3. You should answer these in an RMarkdown document, knit to **PDF** and submit on Canvas. We're going to start, as I threatened, by identifying Mr. Analytics for the 2018-19 NBA season.
+
+<mark>**HW Q1**</mark>: First, read in the shot chart data, save it as `shots18`, and then modify the code below to add two variables: the percent of shots taken from 3-pt range, and then the *mean distance* on 2-pt shots. (1 pt)
+
+```{r player_sum_hw}
+
+players18 <- shots18 %>% 
+  mutate(pts = case_when(SHOT_TYPE == "3PT Field Goal" ~ 3, # New variable for 2 vs. 3 pt shot
+                         TRUE ~ 2)) %>% 
+  group_by(PLAYER_NAME, TEAM_NAME) %>% 
+  summarize(FGA = n(), # Count rows to get FGA
+            FGM = sum(SHOT_MADE_FLAG), # Sum um 0/1 SHOT_MADE_FLAG to get FGM
+            
+            # Do a "Count If" equivalent to get number of 2 pt and 3pt FGA
+            FGA_2pt = sum(pts[pts==2])/2,
+            FGA_3pt = sum(pts[pts==3])/3,
+            
+            # Multiply those "count ifs" by SHOT_MADE_FLAG to get number of each type of FGM
+            FGM_2pt = sum(pts[pts==2]*SHOT_MADE_FLAG[pts==2])/2,
+            FGM_3pt = sum(pts[pts==3]*SHOT_MADE_FLAG[pts==3])/3,
+            
+            ### HW SOLUTION - DELETE DELETE DELETE ###
+            pct_3pt = FGA_3pt/FGA,
+            dist_2pt = mean(SHOT_DISTANCE[pts == 2])) %>%
+  
+  ungroup()
+
+```
+
+<mark>**HW Q2**</mark>: Create a scatterplot of these two new variables for all players with >500 total shot attempts, with 3-pt percentage on the x-axis and 2-pt distance on the y-axis. Instead of points, plot player names.
+
+Give the plot a title and clear axis labels. (2 pts)
+
+```{r player_sum_hw_scatter}
+
+players18 %>% 
+  filter(FGA >= 500) %>% 
+  ggplot(aes(x = pct_3pt, y = dist_2pt)) +
+  geom_text(aes(label = PLAYER_NAME)) +
+  labs(title = "Mr. Analytics, 2018-19 NBA Season",
+       x = "Percent of FGA from 3-pt Range",
+       y = "Average Distance on 2-pt FGA")
+
+```
+
+<mark>**HW Q3**</mark>: To whom would you award the title of Mr. Analytics for the 2018-19 NBA Season? Justify your answer in 1-3 sentences. (1 pt)
+
+<mark>**HW Q4**</mark>: Create a shot chart for your awardee. Is this plot consistent with what you thought you knew about the player above? And what is his favorite type of shot(s)? Answer in 1-3 sentences. (2 pts)
+
+NOTE: In the document you submit to me, don't *show* the long code you have to use to set up the court plot. To do this, simply use the `include = FALSE` option in the chunk with that code. DO, however, show the other code you use to create the shot chart.
+
+
+```{r plot_w_court_mranalytics}
+
+# Create base court plot
+base_court <- plot_court(court_themes$dark)
+
+# Create one scatterplot
+base_court + 
+  geom_point(data = shots18 %>% filter(PLAYER_NAME == "Domantas Sabonis"), # Do filtering inside geom_point()
+             
+             aes(x = LOC_X, y = LOC_Y + hoop_center_y, color = EVENT_TYPE)) +
+  
+  labs(X = "", y = "", title = "P.J. Tucker \n Regular Season, 2018-19") +
+  
+  theme(legend.title = element_blank(), # Remove the legend title because "EVENT_TYPE" looks bad and isn't necessary
+        plot.title = element_text(hjust = 0.5)) # Center align title
+```
+
+<mark>**HW Q5**</mark>: Obviously Mr. Analytics isn't a real award, and it's likely the player you identified wasn't even in discussion for something like Most Valuable Player (MVP). Why not? Give at least 2 reasons why a Mr. Analytics (not necessarily the one you identified) might not actually generate *value* for his team? (1 pt)
+
+SOLUTION DELETE DELETE DELETE: 
+
+1. Volume vs. rate. Value is a volume stat. He may have taken a higher percentage of his shots from 3-pt range or close to the basket, but if he didn't take many shots to begin with he wouldn't emerge as an MVP candidate.
+
+2. He could also just be a bad shooter. Thus even if he has a high volume of shots and a large percentage of them are analytically savvy, he still may not be generating any value for his team! Think about if *I* tried to play an analytically-savvy game in the NBA. I might be crowned Mr. Analytics but I certainly wouldn't be a valuable addition to any team.
+
+<mark>**HW Q6**</mark>: Using `shots18` (NOT the data grouped by player above), calculate the overall league average 2-pt and 3-pt FG% for 2018-19. Print your results. No interpretation is needed for this question.
+
+HINT: The `SHOT_MADE_FLAG` variable may be useful here.
+
+```{r hwq6}
+
+shots18 %>%
+  group_by(SHOT_TYPE) %>% 
+  summarize(FG_pct = mean(SHOT_MADE_FLAG))
+
+```
+
+<mark>**HW Q7**</mark>: Using `players18`, and among players with >50 total 2-pt and 3-pt shot attempts, print the 6 players with the *greatest* and *smallest* differences between their FG% for 2- and 3-pt shots. 
+
+Print their names, number of shots of each type, field goal percentages of each type, and the difference between them. 
+
+Describe what you see in about 2-3 sentences. Does anyone shoot better from 3-pt range than 2-pt range? When there's a particularly large difference, is this driven by the player being way above or below average on 3-pointers, 2-pointers, both, or a combination? (1.5 pts)
+
+NOTE: You may need to create several new variables for this question!
+
+HINT: Your minimum and maximum values for the difference in shot percentages (2pt minus 3 pt) should be -0.1283 and 0.4697.
+
+```{r hwq7}
+
+q7 <- players18 %>%
+  filter(FGA_2pt > 50, FGA_3pt > 50) %>% 
+  mutate(FGpct_2 = FGM_2pt/FGA_2pt,
+         FGpct_3 = FGM_3pt/FGA_3pt,
+         Diff_ShotTypes = FGpct_2 - FGpct_3) %>% 
+  select(PLAYER_NAME, FGA_2pt, FGA_3pt, FGpct_2:Diff_ShotTypes) %>% 
+  arrange(Diff_ShotTypes)
+
+head(q7)
+tail(q7)
+
+
+```
+
+General organization and clarity of the report you turn in is worth 1 pt.

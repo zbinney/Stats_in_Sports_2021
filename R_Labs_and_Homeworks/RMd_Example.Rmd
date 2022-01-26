@@ -1,0 +1,80 @@
+---
+title: "RMd Example - Baseball Data"
+author: "Zach Binney, PhD"
+date: "August 6, 2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(Lahman, tidyverse)
+```
+
+# RMarkdown Basics
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. 
+
+# RMarkdown Formatting
+
+You can format text in RMarkdown, for example by creating bulleted lists,
+
+* Of *italicized* text,
+
+* Or of **bolded** text
+
+* Or Of [links](https://www.youtube.com/watch?v=dQw4w9WgXcQ)
+
+You could also insert images.
+
+## This is a Sub-Heading
+
+One of the cool things you can do in RMarkdown is use headings and sub-headings to organize your document. This is critical for helping people follow what you're doing.
+
+More ####s make smaller headings, and you can use from 1 to 6. MAKE SURE YOU PUT A SPACE BETWEEN THE # AND THE TEXT TO RENDER THE HEADING.
+
+# Mixing Code and Text
+
+The real power of RMarkdown is you can write some text, then embed an R **code chunk** like this:
+
+```{r cars}
+# Let's take a look at the Teams data frame provided by the Lahman package
+# Start by printing first 6 rows
+head(Teams)
+
+# Then check structure of data frame for dimensions, variable types
+str(Teams)
+
+```
+
+
+
+This prints out the first 6 rows of the `Teams` data frame ("**data frame**" is just R-speak for a rectangular dataset/array, like an Excel spreadsheet) from the `Lahman` package.
+
+If you wanted to put more text here - for example, interpreting any analytical results you printed above - you could! It's like writing an article, blogpost, or essay that seamlessly integrates R output.
+
+## Including Plots
+
+You can also embed plots. Let's do a simple scatterplot of wins vs. run differential (the number of runs the team scored minus the number of runs scored on them by their opponents).
+
+```{r pressure}
+# Don't worry about what this code means too much for now
+
+Teams %>% # Take Teams data
+  filter(yearID >= 2001, yearID <= 2019) %>% # Only use team data from 2001-2019
+  mutate(rundiff = R - RA) %>% # Create a new variable for run differential
+  ggplot(aes(x = rundiff, y = W)) + # Plot wins on the x-axis and rundiff on the y-axis
+  geom_point() + # Create a scatterplot
+  geom_smooth() + # Add a smooth line of best fit
+  labs(title = "Run Differential vs. Wins in MLB, 2001-19",
+       x = "Run Differential", y = "Wins") # Add overall title and better labels for X and Y axes
+```
+Now down here I can describe that there's - not surprisingly - a really strong, linear relationship between run differential and wins.
+
+
+# Knitting
+
+When I'm ready to show this RMarkdown document to someone else I would often want to **Knit** (compile) it into another format. For example, I might ask you to submit your homeworks as HTML or PDF files.
+
+To do that you click the "Knit" button at the top of the document. Right now it will knit to HTML by default, but if you click the arrow next to it you can choose from a number of different formats to knit to. You can also change the type of knitting you want to do in the `output =` part of the header above (Line 5). Then you can just click on "Knit" to send it to the new default format you entered on Line 5.
